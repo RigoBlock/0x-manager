@@ -88,9 +88,9 @@ contract FundProxy {
         returns (uint filledTakerTokenAmount)
     {
         Exchange exchange = Exchange(EXCHANGE);
-        address proxy = exchange.TOKEN_TRANSFER_PROXY_CONTRACT();
-        Token takerToken = Token(orderAddresses[3]);
-        takerToken.approve(proxy, orderValues[1]);
+        //address proxy = exchange.TOKEN_TRANSFER_PROXY_CONTRACT();
+        //Token takerToken = Token(orderAddresses[3]);
+        //takerToken.approve(proxy, orderValues[1]);
         filledTakerTokenAmount = exchange.fillOrder(
             orderAddresses,
             orderValues,

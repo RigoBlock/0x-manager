@@ -4,7 +4,7 @@ Exchange contract address:
     
 FundProxy kovan address;
 
-    0x9fd942f59118460d7cd424ffcda39142af424245
+    0x65d5994ab851c5c0f31be953060394cfc171e7c7
 
 WETH addresses:
 
