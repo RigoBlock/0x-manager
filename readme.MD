@@ -4,10 +4,14 @@ Exchange contract address:
     
 FundProxy kovan address;
 
-    0xd1dbd3e530afd417a7073aa2dd0bca4951277db9
+    0x9fd942f59118460d7cd424ffcda39142af424245
 
 WETH addresses:
 
     kovan: '0xd0A1E359811322d97991E03f863a0C30C2cF029C',
     ropsten: '0xA8E9Fa8f91e5Ae138C74648c9C304F1C75003A8D',
     foundation: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+    
+0X kovan exchange address:
+
+    0x90fe2af704b34e0224bf2299c838e04d4dcf1364

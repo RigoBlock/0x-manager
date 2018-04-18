@@ -12,12 +12,19 @@ contract FundProxy {
     
     address public ETHWRAPPER;
     address public EXCHANGE;
-    
-    uint public ethInProxy;
 
-    function() public {
-        deposit();
+    uint public ethInProxy;
+    
+    constructor(
+        address ethWrapper,
+        address exchange)
+        public
+    {
+        ETHWRAPPER = ethWrapper;
+        EXCHANGE = exchange;
     }
+
+    function() public payable {}
     
     function deposit() public payable {
         ethInProxy += msg.value;
@@ -25,6 +32,7 @@ contract FundProxy {
     
     function withdraw(uint amount) public {
         require(amount <= ethInProxy);
+        msg.sender.transfer(amount);
         ethInProxy -= amount;
     }
     
@@ -41,15 +49,15 @@ contract FundProxy {
     {
         EXCHANGE = exchange;
     }
-    
+
     function wrapEth(
         uint amount)
         public
     {
         WETH9 wrapper = WETH9(ETHWRAPPER);
-        wrapper.deposit.value(amount);
+        wrapper.deposit.value(amount)();
     }
-    
+
     function unwrapEth(
         uint amount)
         public
@@ -57,7 +65,7 @@ contract FundProxy {
         WETH9 wrapper = WETH9(ETHWRAPPER);
         wrapper.withdraw(amount);
     }
-    
+
     function setAllowances(
         address targetToken,
         address spender,
@@ -92,5 +100,9 @@ contract FundProxy {
             r,
             s
         );
+    }
+    
+    function thisBalance() public constant returns (uint) {
+        return (address(this).balance);
     }
 }
