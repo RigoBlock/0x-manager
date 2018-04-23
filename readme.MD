@@ -1,6 +1,6 @@
 Exchange contract address:  
 
-    0x40772eb8d8dd7a2a832eea74a03170dcae37891e
+    0x2014966a0a31d5e1044ccde8292c89adee91a2b4
     
 FundProxy kovan address;
 
@@ -15,3 +15,11 @@ WETH addresses:
 0X kovan exchange address:
 
     0x90fe2af704b34e0224bf2299c838e04d4dcf1364
+    
+ZRX kovan token address:
+
+    0x6ff6c0ff1d68b964901f986d4c9fa3ac68346570
+    
+Our kovan tokentransferproxy address:
+
+    0xcc040edf6e508c4372a62b1a902c69dcc52ceb1d

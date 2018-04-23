@@ -134,7 +134,14 @@ contract Exchange is SafeMath {
         ( , , , , dragoOwner, ) = dragoRegistry.fromAddress(_drago);
         //return dragoRegistry.fromAddress()
     }
-
+    
+    /// @notice temporary change of TOKEN_TRANSFER_PROXY_CONTRACT for tests
+    function setTokenTransferProxyContract(
+        address proxy)
+        external
+    {
+        TOKEN_TRANSFER_PROXY_CONTRACT = proxy;
+    }
 
 
     /// @dev Fills the input order.
