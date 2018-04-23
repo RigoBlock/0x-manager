@@ -9,7 +9,7 @@ import { Token } from "../tokens/Token/Token.sol";
 /// @notice this contract is used for testing transactions in an open environment
 /// @notice works on 0x relayers, or just any 0x fork
 contract FundProxy {
-    
+
     address public ETHWRAPPER;
     address public EXCHANGE;
 
@@ -101,7 +101,35 @@ contract FundProxy {
             s
         );
     }
-    
+
+/*
+    function fillOrder(
+        address[] orderAddresses,
+        uint[] orderValues,
+        uint fillTakerTokenAmount,
+        bool shouldThrowOnInsufficientBalanceOrAllowance,
+        uint8 v,
+        bytes32 r,
+        bytes32 s)
+        public
+        returns (uint filledTakerTokenAmount)
+    {
+        Exchange exchange = Exchange(EXCHANGE);
+        //address proxy = exchange.TOKEN_TRANSFER_PROXY_CONTRACT();
+        //Token takerToken = Token(orderAddresses[3]);
+        //takerToken.approve(proxy, orderValues[1]);
+        filledTakerTokenAmount = exchange.fillOrder(
+            orderAddresses,
+            orderValues,
+            fillTakerTokenAmount,
+            shouldThrowOnInsufficientBalanceOrAllowance,
+            v,
+            r,
+            s
+        );
+    }
+*/
+
     function thisBalance() public constant returns (uint) {
         return (address(this).balance);
     }

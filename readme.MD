@@ -1,6 +1,6 @@
 Exchange contract address:  
 
-    0x49489ce5d855e5a2cd53b9ae3ad1d5e0911d0bcb
+    0x40772eb8d8dd7a2a832eea74a03170dcae37891e
     
 FundProxy kovan address;
 
