@@ -127,12 +127,12 @@ contract Exchange is SafeMath {
     /*
     * Core exchange functions
     */
-
-    DragoRegistryFace dragoRegistry = DragoRegistryFace(0x6254966b98c1542e44a280509f62c685ffdcb1a2);
     
+    /// address is hardcoded in the contract, we need to set registry at creation or after
+    DragoRegistryFace dragoRegistry = DragoRegistryFace(0x6254966b98c1542e44a280509f62c685ffdcb1a2);
+ 
     function getDragoOwner(address _drago) public view returns (address dragoOwner) {
         ( , , , , dragoOwner, ) = dragoRegistry.fromAddress(_drago);
-        //return dragoRegistry.fromAddress()
     }
     
     /// @notice temporary change of TOKEN_TRANSFER_PROXY_CONTRACT for tests
@@ -883,6 +883,5 @@ contract Exchange is SafeMath {
         returns (address)
     {
         return (getDragoOwner(target) != 0x0 ? getDragoOwner(target) : target);
-
     }
 }
