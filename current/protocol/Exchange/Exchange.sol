@@ -16,45 +16,13 @@
 
 */
 
-pragma solidity ^0.4.14;
-
-/// @title Drago Registry Interface - Allows external intaction with Drago Registry.
-/// @author Gabriele Rigo - <gab@rigoblock.com>
-interface DragoRegistryFace {
-
-    //EVENTS
-
-    event Registered(string name, string symbol, uint id, address indexed drago, address indexed owner, address indexed group);
-    event Unregistered(string indexed symbol, uint indexed id);
-    event MetaChanged(uint indexed id, bytes32 indexed key, bytes32 value);
-
-    // CORE FUNCTIONS
-
-    function register(address _drago, string _name, string _symbol, uint _dragoId, address _owner) external payable returns (bool);
-    function unregister(uint _id) external;
-    function setMeta(uint _id, bytes32 _key, bytes32 _value) external;
-    function addGroup(address _group) external;
-    function setFee(uint _fee) external;
-    function upgrade(address _newAddress) external payable; //payable as there is a transfer of value, otherwise opcode might throw an error
-    function setUpgraded(uint _version) external;
-    function drain() external;
-
-    function dragoCount() external view returns (uint);
-    function fromId(uint _id) external view returns (address drago, string name, string symbol, uint dragoId, address owner, address group);
-    function fromAddress(address _drago) external view returns (uint id, string name, string symbol, uint dragoId, address owner, address group);
-    function fromSymbol(string _symbol) external view returns (uint id, address drago, string name, uint dragoId, address owner, address group);
-    function fromName(string _name) external view returns (uint id, address drago, string symbol, uint dragoId, address owner, address group);
-    function fromNameSymbol(string _name, string _symbol) external view returns (address);
-    function getNameFromAddress(address _pool) external view returns (bytes32);
-    function getSymbolFromAddress(address _pool) external view returns (bytes32);
-    function meta(uint _id, bytes32 _key) external view returns (bytes32);
-    function getGroups() external view returns (address[]);
-    function getFee() external view returns (uint);
-}
+pragma solidity ^0.4.23;
 
 import { TokenTransferProxy } from "../TokenTransferProxy/TokenTransferProxy.sol";
 import { Token_v1 as Token } from "../../../previous/Token/Token_v1.sol";
 import { SafeMath_v1 as SafeMath } from "../../../previous/SafeMath/SafeMath_v1.sol";
+
+import { Ownable as Owned } from "../../utils/Ownable/Ownable.sol";
 
 /// @title Exchange - Facilitates exchange of ERC20 tokens.
 /// @author Amir Bandeali - <amir@0xProject.com>, Will Warren - <will@0xProject.com>
@@ -68,7 +36,7 @@ contract Exchange is SafeMath {
         INSUFFICIENT_BALANCE_OR_ALLOWANCE // Insufficient balance or allowance for token transfer
     }
 
-    string constant public VERSION = "1.0.0";
+    string constant public VERSION = "1.1.0";
     uint16 constant public EXTERNAL_QUERY_GAS_LIMIT = 4999;    // Changes to state require at least 5000 gas
 
     address public ZRX_TOKEN_CONTRACT;
@@ -119,7 +87,11 @@ contract Exchange is SafeMath {
         bytes32 orderHash;
     }
 
-    function Exchange(address _zrxToken, address _tokenTransferProxy) {
+    constructor(
+        address _zrxToken,
+        address _tokenTransferProxy)
+        public
+    {
         ZRX_TOKEN_CONTRACT = _zrxToken;
         TOKEN_TRANSFER_PROXY_CONTRACT = _tokenTransferProxy;
     }
@@ -127,14 +99,7 @@ contract Exchange is SafeMath {
     /*
     * Core exchange functions
     */
-    
-    /// address is hardcoded in the contract, we need to set registry at creation or after
-    DragoRegistryFace dragoRegistry = DragoRegistryFace(0x6254966b98c1542e44a280509f62c685ffdcb1a2);
- 
-    function getDragoOwner(address _drago) public view returns (address dragoOwner) {
-        ( , , , , dragoOwner, ) = dragoRegistry.fromAddress(_drago);
-    }
-    
+
     /// @notice temporary change of TOKEN_TRANSFER_PROXY_CONTRACT for tests
     function setTokenTransferProxyContract(
         address proxy)
@@ -142,7 +107,6 @@ contract Exchange is SafeMath {
     {
         TOKEN_TRANSFER_PROXY_CONTRACT = proxy;
     }
-
 
     /// @dev Fills the input order.
     /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
@@ -189,24 +153,24 @@ contract Exchange is SafeMath {
         ));
 
         if (block.timestamp >= order.expirationTimestampInSec) {
-            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
+            emit LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
             return 0;
         }
 
         uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
         filledTakerTokenAmount = min256(fillTakerTokenAmount, remainingTakerTokenAmount);
         if (filledTakerTokenAmount == 0) {
-            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
+            emit LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
             return 0;
         }
 
         if (isRoundingError(filledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount)) {
-            LogError(uint8(Errors.ROUNDING_ERROR_TOO_LARGE), order.orderHash);
+            emit LogError(uint8(Errors.ROUNDING_ERROR_TOO_LARGE), order.orderHash);
             return 0;
         }
 
         if (!shouldThrowOnInsufficientBalanceOrAllowance && !isTransferable(order, filledTakerTokenAmount)) {
-            LogError(uint8(Errors.INSUFFICIENT_BALANCE_OR_ALLOWANCE), order.orderHash);
+            emit LogError(uint8(Errors.INSUFFICIENT_BALANCE_OR_ALLOWANCE), order.orderHash);
             return 0;
         }
 
@@ -247,7 +211,7 @@ contract Exchange is SafeMath {
             }
         }
 
-        LogFill(
+        emit LogFill(
             order.maker,
             msg.sender,
             order.feeRecipient,
@@ -262,127 +226,6 @@ contract Exchange is SafeMath {
         );
         return filledTakerTokenAmount;
     }
-
-/*
-    /// @dev Fills the input order.
-    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
-    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
-    /// @param fillTakerTokenAmount Desired amount of takerToken to fill.
-    /// @param shouldThrowOnInsufficientBalanceOrAllowance Test if transfer will fail before attempting.
-    /// @param v ECDSA signature parameter v.
-    /// @param r ECDSA signature parameters r.
-    /// @param s ECDSA signature parameters s.
-    /// @return Total amount of takerToken filled in trade.
-    function fillOrder(
-          address[] orderAddresses,
-          uint[] orderValues,
-          uint fillTakerTokenAmount,
-          bool shouldThrowOnInsufficientBalanceOrAllowance,
-          uint8 v,
-          bytes32 r,
-          bytes32 s)
-          public
-          returns (uint filledTakerTokenAmount)
-    {
-        Order memory order = Order({
-            maker: orderAddresses[0],
-            taker: orderAddresses[1],
-            makerToken: orderAddresses[2],
-            takerToken: orderAddresses[3],
-            feeRecipient: orderAddresses[4],
-            makerTokenAmount: orderValues[0],
-            takerTokenAmount: orderValues[1],
-            makerFee: orderValues[2],
-            takerFee: orderValues[3],
-            expirationTimestampInSec: orderValues[4],
-            orderHash: getOrderHash(orderAddresses, orderValues)
-        });
-
-        require(order.taker == address(0) || order.taker == msg.sender);
-        require(order.makerTokenAmount > 0 && order.takerTokenAmount > 0 && fillTakerTokenAmount > 0);
-        require(isValidSignature(
-            getSigner(order.maker),
-            order.orderHash,
-            v,
-            r,
-            s
-        ));
-
-        if (block.timestamp >= order.expirationTimestampInSec) {
-            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
-            return 0;
-        }
-
-        uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
-        filledTakerTokenAmount = min256(fillTakerTokenAmount, remainingTakerTokenAmount);
-        if (filledTakerTokenAmount == 0) {
-            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
-            return 0;
-        }
-
-        if (isRoundingError(filledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount)) {
-            LogError(uint8(Errors.ROUNDING_ERROR_TOO_LARGE), order.orderHash);
-            return 0;
-        }
-
-        if (!shouldThrowOnInsufficientBalanceOrAllowance && !isTransferable(order, filledTakerTokenAmount)) {
-            LogError(uint8(Errors.INSUFFICIENT_BALANCE_OR_ALLOWANCE), order.orderHash);
-            return 0;
-        }
-
-        uint filledMakerTokenAmount = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount);
-        uint paidMakerFee;
-        uint paidTakerFee;
-        filled[order.orderHash] = safeAdd(filled[order.orderHash], filledTakerTokenAmount);
-        require(transferViaTokenTransferProxy(
-            order.makerToken,
-            order.maker,
-            msg.sender,
-            filledMakerTokenAmount
-        ));
-        require(transferViaTokenTransferProxy(
-            order.takerToken,
-            msg.sender,
-            order.maker,
-            filledTakerTokenAmount
-        ));
-        if (order.feeRecipient != address(0)) {
-            if (order.makerFee > 0) {
-                paidMakerFee = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.makerFee);
-                require(transferViaTokenTransferProxy(
-                    ZRX_TOKEN_CONTRACT,
-                    order.maker,
-                    order.feeRecipient,
-                    paidMakerFee
-                ));
-            }
-            if (order.takerFee > 0) {
-                paidTakerFee = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.takerFee);
-                require(transferViaTokenTransferProxy(
-                    ZRX_TOKEN_CONTRACT,
-                    msg.sender,
-                    order.feeRecipient,
-                    paidTakerFee
-                ));
-            }
-        }
-
-        LogFill(
-            order.maker,
-            msg.sender,
-            order.feeRecipient,
-            order.makerToken,
-            order.takerToken,
-            filledMakerTokenAmount,
-            filledTakerTokenAmount,
-            paidMakerFee,
-            paidTakerFee,
-            keccak256(order.makerToken, order.takerToken),
-            order.orderHash
-        );
-        return filledTakerTokenAmount;
-    }
-*/
 
     /// @dev Cancels the input order.
     /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
@@ -414,20 +257,20 @@ contract Exchange is SafeMath {
         require(order.makerTokenAmount > 0 && order.takerTokenAmount > 0 && cancelTakerTokenAmount > 0);
 
         if (block.timestamp >= order.expirationTimestampInSec) {
-            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
+            emit LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
             return 0;
         }
 
         uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
         uint cancelledTakerTokenAmount = min256(cancelTakerTokenAmount, remainingTakerTokenAmount);
         if (cancelledTakerTokenAmount == 0) {
-            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
+            emit LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
             return 0;
         }
 
         cancelled[order.orderHash] = safeAdd(cancelled[order.orderHash], cancelledTakerTokenAmount);
 
-        LogCancel(
+        emit LogCancel(
             order.maker,
             order.feeRecipient,
             order.makerToken,
@@ -439,65 +282,6 @@ contract Exchange is SafeMath {
         );
         return cancelledTakerTokenAmount;
     }
-
-
-/*
-    /// @dev Cancels the input order.
-    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
-    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
-    /// @param cancelTakerTokenAmount Desired amount of takerToken to cancel in order.
-    /// @return Amount of takerToken cancelled.
-    function cancelOrder(
-        address[] orderAddresses,
-        uint[] orderValues,
-        uint cancelTakerTokenAmount)
-        public
-        returns (uint)
-    {
-        Order memory order = Order({
-            maker: orderAddresses[0],
-            taker: orderAddresses[1],
-            makerToken: orderAddresses[2],
-            takerToken: orderAddresses[3],
-            feeRecipient: orderAddresses[4],
-            makerTokenAmount: orderValues[0],
-            takerTokenAmount: orderValues[1],
-            makerFee: orderValues[2],
-            takerFee: orderValues[3],
-            expirationTimestampInSec: orderValues[4],
-            orderHash: getOrderHash(orderAddresses, orderValues)
-        });
-
-        require(order.maker == msg.sender);
-        require(order.makerTokenAmount > 0 && order.takerTokenAmount > 0 && cancelTakerTokenAmount > 0);
-
-        if (block.timestamp >= order.expirationTimestampInSec) {
-            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
-            return 0;
-        }
-
-        uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
-        uint cancelledTakerTokenAmount = min256(cancelTakerTokenAmount, remainingTakerTokenAmount);
-        if (cancelledTakerTokenAmount == 0) {
-            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
-            return 0;
-        }
-
-        cancelled[order.orderHash] = safeAdd(cancelled[order.orderHash], cancelledTakerTokenAmount);
-
-        LogCancel(
-            order.maker,
-            order.feeRecipient,
-            order.makerToken,
-            order.takerToken,
-            getPartialAmount(cancelledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount),
-            cancelledTakerTokenAmount,
-            keccak256(order.makerToken, order.takerToken),
-            order.orderHash
-        );
-        return cancelledTakerTokenAmount;
-    }
-*/
 
     /*
     * Wrapper functions
@@ -652,33 +436,6 @@ contract Exchange is SafeMath {
     * Constant public functions
     */
 
-/*
-    /// @dev Calculates Keccak-256 hash of order with specified parameters.
-    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
-    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
-    /// @return Keccak-256 hash of order.
-    function getOrderHash(address[] orderAddresses, uint[] orderValues)
-        public
-        constant
-        returns (bytes32)
-    {
-        return keccak256(
-            address(this),
-            orderAddresses[0], // maker
-            orderAddresses[1], // taker
-            orderAddresses[2], // makerToken
-            orderAddresses[3], // takerToken
-            orderAddresses[4], // feeRecipient
-            orderValues[0],    // makerTokenAmount
-            orderValues[1],    // takerTokenAmount
-            orderValues[2],    // makerFee
-            orderValues[3],    // takerFee
-            orderValues[4],    // expirationTimestampInSec
-            orderValues[5]     // salt
-        );
-    }
-  */  
-
     /// @dev Calculates Keccak-256 hash of order with specified parameters.
     /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
     /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
@@ -718,8 +475,7 @@ contract Exchange is SafeMath {
         uint8 v,
         bytes32 r,
         bytes32 s)
-        public
-        constant
+        public pure
         returns (bool)
     {
         return signer == ecrecover(
@@ -731,15 +487,14 @@ contract Exchange is SafeMath {
     }
     
     /// @dev Get the address of the signer of a transaction, maker or fund manager
-    /// @param target Address to be inspected
+    /// @param _target Address to be inspected
     /// @return Address of the signer
     function getSigner(
-        address target)
-        external
-        view
+        address _target)
+        external view
         returns (address)
     {
-        return getSignerInternal(target);
+        return getSignerInternal(_target);
     }
 
     /// @dev Checks if rounding error > 0.1%.
@@ -874,14 +629,248 @@ contract Exchange is SafeMath {
     }
     
     /// @dev Get the address of the signer of a transaction, maker or fund manager
-    /// @param target Address to be inspected
+    /// @param _target Address to be inspected
     /// @return Address of the signer
     function getSignerInternal(
-        address target)
-        internal
-        view
+        address _target)
+        internal view
         returns (address)
     {
-        return (getDragoOwner(target) != 0x0 ? getDragoOwner(target) : target);
+        if (isContract(_target)) {
+            return Owned(_target).owner();
+        } else {
+            return _target;
+        }
+    }
+
+    /// @dev Determines whether an address is an account or a contract
+    /// @param _target Address to be inspected
+    /// @return Boolean the address is a contract
+    /// @notice if it is a contract, we use this function to lookup for the owner
+    function isContract(address _target)
+        internal view
+        returns (bool)
+    {
+        uint size;
+        assembly {
+            size := extcodesize(_target)
+        }
+        return size > 0;
     }
 }
+
+    // GENERALIZED FUNCTIONS FOR ALLOWING FOR MORE INPUT PARAMETERS
+    
+/*
+    /// @dev Fills the input order.
+    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
+    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
+    /// @param fillTakerTokenAmount Desired amount of takerToken to fill.
+    /// @param shouldThrowOnInsufficientBalanceOrAllowance Test if transfer will fail before attempting.
+    /// @param v ECDSA signature parameter v.
+    /// @param r ECDSA signature parameters r.
+    /// @param s ECDSA signature parameters s.
+    /// @return Total amount of takerToken filled in trade.
+    function fillOrder(
+          address[] orderAddresses,
+          uint[] orderValues,
+          uint fillTakerTokenAmount,
+          bool shouldThrowOnInsufficientBalanceOrAllowance,
+          uint8 v,
+          bytes32 r,
+          bytes32 s)
+          public
+          returns (uint filledTakerTokenAmount)
+    {
+        Order memory order = Order({
+            maker: orderAddresses[0],
+            taker: orderAddresses[1],
+            makerToken: orderAddresses[2],
+            takerToken: orderAddresses[3],
+            feeRecipient: orderAddresses[4],
+            makerTokenAmount: orderValues[0],
+            takerTokenAmount: orderValues[1],
+            makerFee: orderValues[2],
+            takerFee: orderValues[3],
+            expirationTimestampInSec: orderValues[4],
+            orderHash: getOrderHash(orderAddresses, orderValues)
+        });
+
+        require(order.taker == address(0) || order.taker == msg.sender);
+        require(order.makerTokenAmount > 0 && order.takerTokenAmount > 0 && fillTakerTokenAmount > 0);
+        require(isValidSignature(
+            getSigner(order.maker),
+            order.orderHash,
+            v,
+            r,
+            s
+        ));
+
+        if (block.timestamp >= order.expirationTimestampInSec) {
+            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
+            return 0;
+        }
+
+        uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
+        filledTakerTokenAmount = min256(fillTakerTokenAmount, remainingTakerTokenAmount);
+        if (filledTakerTokenAmount == 0) {
+            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
+            return 0;
+        }
+
+        if (isRoundingError(filledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount)) {
+            LogError(uint8(Errors.ROUNDING_ERROR_TOO_LARGE), order.orderHash);
+            return 0;
+        }
+
+        if (!shouldThrowOnInsufficientBalanceOrAllowance && !isTransferable(order, filledTakerTokenAmount)) {
+            LogError(uint8(Errors.INSUFFICIENT_BALANCE_OR_ALLOWANCE), order.orderHash);
+            return 0;
+        }
+
+        uint filledMakerTokenAmount = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount);
+        uint paidMakerFee;
+        uint paidTakerFee;
+        filled[order.orderHash] = safeAdd(filled[order.orderHash], filledTakerTokenAmount);
+        require(transferViaTokenTransferProxy(
+            order.makerToken,
+            order.maker,
+            msg.sender,
+            filledMakerTokenAmount
+        ));
+        require(transferViaTokenTransferProxy(
+            order.takerToken,
+            msg.sender,
+            order.maker,
+            filledTakerTokenAmount
+        ));
+        if (order.feeRecipient != address(0)) {
+            if (order.makerFee > 0) {
+                paidMakerFee = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.makerFee);
+                require(transferViaTokenTransferProxy(
+                    ZRX_TOKEN_CONTRACT,
+                    order.maker,
+                    order.feeRecipient,
+                    paidMakerFee
+                ));
+            }
+            if (order.takerFee > 0) {
+                paidTakerFee = getPartialAmount(filledTakerTokenAmount, order.takerTokenAmount, order.takerFee);
+                require(transferViaTokenTransferProxy(
+                    ZRX_TOKEN_CONTRACT,
+                    msg.sender,
+                    order.feeRecipient,
+                    paidTakerFee
+                ));
+            }
+        }
+
+        LogFill(
+            order.maker,
+            msg.sender,
+            order.feeRecipient,
+            order.makerToken,
+            order.takerToken,
+            filledMakerTokenAmount,
+            filledTakerTokenAmount,
+            paidMakerFee,
+            paidTakerFee,
+            keccak256(order.makerToken, order.takerToken),
+            order.orderHash
+        );
+        return filledTakerTokenAmount;
+    }
+*/
+
+/*
+    /// @dev Cancels the input order.
+    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
+    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
+    /// @param cancelTakerTokenAmount Desired amount of takerToken to cancel in order.
+    /// @return Amount of takerToken cancelled.
+    function cancelOrder(
+        address[] orderAddresses,
+        uint[] orderValues,
+        uint cancelTakerTokenAmount)
+        public
+        returns (uint)
+    {
+        Order memory order = Order({
+            maker: orderAddresses[0],
+            taker: orderAddresses[1],
+            makerToken: orderAddresses[2],
+            takerToken: orderAddresses[3],
+            feeRecipient: orderAddresses[4],
+            makerTokenAmount: orderValues[0],
+            takerTokenAmount: orderValues[1],
+            makerFee: orderValues[2],
+            takerFee: orderValues[3],
+            expirationTimestampInSec: orderValues[4],
+            orderHash: getOrderHash(orderAddresses, orderValues)
+        });
+
+        require(order.maker == msg.sender);
+        require(order.makerTokenAmount > 0 && order.takerTokenAmount > 0 && cancelTakerTokenAmount > 0);
+
+        if (block.timestamp >= order.expirationTimestampInSec) {
+            LogError(uint8(Errors.ORDER_EXPIRED), order.orderHash);
+            return 0;
+        }
+
+        uint remainingTakerTokenAmount = safeSub(order.takerTokenAmount, getUnavailableTakerTokenAmount(order.orderHash));
+        uint cancelledTakerTokenAmount = min256(cancelTakerTokenAmount, remainingTakerTokenAmount);
+        if (cancelledTakerTokenAmount == 0) {
+            LogError(uint8(Errors.ORDER_FULLY_FILLED_OR_CANCELLED), order.orderHash);
+            return 0;
+        }
+
+        cancelled[order.orderHash] = safeAdd(cancelled[order.orderHash], cancelledTakerTokenAmount);
+
+        LogCancel(
+            order.maker,
+            order.feeRecipient,
+            order.makerToken,
+            order.takerToken,
+            getPartialAmount(cancelledTakerTokenAmount, order.takerTokenAmount, order.makerTokenAmount),
+            cancelledTakerTokenAmount,
+            keccak256(order.makerToken, order.takerToken),
+            order.orderHash
+        );
+        return cancelledTakerTokenAmount;
+    }
+*/
+
+/*
+    /// @dev Calculates Keccak-256 hash of order with specified parameters.
+    /// @param orderAddresses Array of order's maker, taker, makerToken, takerToken, and feeRecipient.
+    /// @param orderValues Array of order's makerTokenAmount, takerTokenAmount, makerFee, takerFee, expirationTimestampInSec, and salt.
+    /// @return Keccak-256 hash of order.
+    function getOrderHash(address[] orderAddresses, uint[] orderValues)
+        public
+        constant
+        returns (bytes32)
+    {
+        return keccak256(
+            address(this),
+            orderAddresses[0], // maker
+            orderAddresses[1], // taker
+            orderAddresses[2], // makerToken
+            orderAddresses[3], // takerToken
+            orderAddresses[4], // feeRecipient
+            orderValues[0],    // makerTokenAmount
+            orderValues[1],    // takerTokenAmount
+            orderValues[2],    // makerFee
+            orderValues[3],    // takerFee
+            orderValues[4],    // expirationTimestampInSec
+            orderValues[5]     // salt
+        );
+    }
+  */
+  
+  /*address theSigner;
+        if (hasOwner(target)) {
+            theSigner = getDragoOwner(target);
+        } else {
+            theSigner = target;
+        }
+        return theSigner;*/

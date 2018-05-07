@@ -1,6 +1,8 @@
+When a new exchange is deployed, it must be whitelisted in the tokentransferproxy
+
 Exchange contract address:  
 
-    0x2014966a0a31d5e1044ccde8292c89adee91a2b4
+    0xf307de6528fa16473d8f6509b7b1d8851320dba5
     
 FundProxy kovan address;
 
