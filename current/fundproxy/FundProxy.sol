@@ -1,4 +1,5 @@
 pragma solidity ^0.4.23;
+pragma experimental "v0.5.0";
 
 import { TokenTransferProxy } from "../protocol/TokenTransferProxy/TokenTransferProxy.sol";
 import { Exchange } from "../protocol/Exchange/Exchange.sol";
@@ -26,7 +27,7 @@ contract FundProxy is SafeMath {
         EXCHANGE = exchange;
     }
 
-    function() public payable {}
+    function() external payable {}
     
     function deposit() public payable {
         ethInProxy += msg.value;
@@ -297,4 +298,86 @@ contract FundProxy is SafeMath {
     function thisBalance() public constant returns (uint) {
         return (address(this).balance);
     }
+    
+    // THE FUNDPROXY ACTS AS EXTENSION LIBRARY TO DRAGO
+    // THE BELOW FUNCTIONS GET IMPLEMENTED IN THE DRAGO DIRECTLY
+    
+    /// @dev Allows approved exchange to send a transaction to exchange
+    /// @dev With data of signed/unsigned transaction
+    /// @param _exchange Address of the exchange
+    /// @param _assembledTransaction Bytes of the parameters of the call
+    function operateOnExchange(address _exchange, bytes _assembledTransaction)
+        external
+        //whenApprovedExchange(msg.sender)
+    {
+        require(_exchange.call(_assembledTransaction));
+    }
+    
+    function delegateTheCall(address _exchange, bytes _assembledTransaction)
+        external
+        //whenApprovedExchange(msg.sender)
+    {
+        require(_exchange.delegatecall(_assembledTransaction));
+    }
+
+    /// this function is used for debugging, direct operations on excange is for
+    /// approved exchanges only
+    function operateOnExchangeDirectly(address _exchange, bytes _assembledTransaction)
+        external
+        //ownerOrApprovedExchange()
+        //whenApprovedExchange(_exchange)
+    {
+        bytes memory _data = _assembledTransaction;
+        address _target = _exchange;
+        bytes memory response;
+        bool failed;
+        assembly {
+            let succeeded := call(sub(gas, 5000), _target, 0, add(_data, 0x20), mload(_data), 0, 0)
+            response := mload(0)      // load delegatecall output
+            failed := iszero(succeeded)
+        }
+        require(!failed);
+    }
+
+    function UseFundAsPureProxy(address _target, bytes _assembledTransaction)
+        //external
+        public
+        //ownerOrApprovedExchange()
+        //whenApprovedExchange(_exchange)
+    {
+        bytes memory _data = _assembledTransaction;
+        //address _target = _exchange;
+        //bytes memory response;
+        //bool failed;
+        assembly {
+            let success := delegatecall(
+                gas,                // gas
+                _target,            // target address
+                add(_data, 0x20),   // pointer to start of input
+                mload(_data),       // length of input
+                0,                  // put value if want to write output over input
+                0)                  // output size (we have no output here)
+            let size:= returndatasize
+
+            let pointer := mload(0x40)
+            //response := mload(0)      // load delegatecall output
+            returndatacopy(pointer, 0, size)
+            
+            switch success
+            case 0 {
+                revert(pointer, size)
+            }
+            default {
+                return(pointer, size)
+            }
+        }
+    }
 }
+
+/*
+    function isContract(address _target) internal view returns (bool) {
+        uint256 size;
+        assembly { size := extcodesize(_target) }
+        return size > 0;
+    }
+*/
