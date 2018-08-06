@@ -26,3 +26,7 @@ ZRX kovan token address:
 Our kovan tokentransferproxy address:
 
     0xcc040edf6e508c4372a62b1a902c69dcc52ceb1d
+    
+Our ropsten 0x Exchange fork address:
+
+    0x39311089E9DFE822BBEA4706A43a99A78548C920
