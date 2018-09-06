@@ -30,3 +30,7 @@ Our kovan tokentransferproxy address:
 Our ropsten 0x Exchange fork address:
 
     0x39311089E9DFE822BBEA4706A43a99A78548C920
+    
+And our tokentransferproxy:
+
+    0xf7bef22867d211D28299b8e787494BaCe2adee70
